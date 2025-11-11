@@ -154,6 +154,7 @@
 
           const gameLoopId = useRef(null);
           const pipeTimeoutId = useRef(null);
+          const autoReturnTimeoutId = useRef(null);
           
           const birdPosition = useRef(GAME_HEIGHT / 2 - BIRD_SIZE / 2);
           const birdVelocity = useRef(0);
@@ -242,6 +243,10 @@
           }, []);
           
           const restartGame = useCallback(() => {
+              if (autoReturnTimeoutId.current) {
+                  clearTimeout(autoReturnTimeoutId.current);
+                  autoReturnTimeoutId.current = null;
+              }
               setGameState('start');
           }, []);
 
@@ -255,6 +260,26 @@
                   if (pipeTimeoutId.current) clearTimeout(pipeTimeoutId.current);
               };
           }, [gameState, gameLoop, spawnPipe]);
+
+          // Auto-return to title screen after 10 seconds on game over
+          useEffect(() => {
+              if (gameState === 'gameOver') {
+                  autoReturnTimeoutId.current = window.setTimeout(() => {
+                      restartGame();
+                  }, 10000); // 10 seconds
+              } else {
+                  if (autoReturnTimeoutId.current) {
+                      clearTimeout(autoReturnTimeoutId.current);
+                      autoReturnTimeoutId.current = null;
+                  }
+              }
+              return () => {
+                  if (autoReturnTimeoutId.current) {
+                      clearTimeout(autoReturnTimeoutId.current);
+                      autoReturnTimeoutId.current = null;
+                  }
+              };
+          }, [gameState, restartGame]);
           
           useEffect(() => {
               const handleAction = () => {
