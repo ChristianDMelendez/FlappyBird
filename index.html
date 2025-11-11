@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flappy Bird</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-gray-900 text-white">
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useCallback, useRef } = React;
+
+      // Game Constants
+      const GAME_WIDTH = 500;
+      const GAME_HEIGHT = 700;
+      const BIRD_SIZE = 30;
+      const BIRD_X_POSITION = GAME_WIDTH / 4;
+      const GRAVITY = 0.5;
+      const JUMP_STRENGTH = -8;
+      const PIPE_WIDTH = 60;
+      const PIPE_GAP = 200;
+      const PIPE_SPAWN_INTERVAL = 1500;
+      const PIPE_SPEED = 4;
+      const LEADERBOARD_MAX_ENTRIES = 10;
+
+      const BIRD_COLORS = [
+          'bg-yellow-400',
+          'bg-red-500',
+          'bg-cyan-300',
+          'bg-pink-400',
+          'bg-white'
+      ];
+
+      // UI Components
+      const LeaderboardDisplay = ({ leaderboard }) => (
+          <div className="w-full max-w-sm">
+              <h3 className="text-3xl font-bold mb-4 text-yellow-400 text-center" style={{ textShadow: '2px 2px 4px #000' }}>History Book</h3>
+              <div className="bg-black/30 p-4 rounded-lg space-y-2 max-h-64 overflow-y-auto">
+                  {leaderboard.length === 0 ? (
+                      <p className="text-center text-gray-300">No scores yet. Be the first!</p>
+                  ) : (
+                      leaderboard.map((entry, index) => (
+                          <div key={index} className="flex justify-between items-center text-lg p-2 rounded-md bg-gray-900/50">
+                              <span className="font-bold text-white">{index + 1}. {entry.name}</span>
+                              <span className="font-bold text-yellow-400">{entry.score}</span>
+                          </div>
+                      ))
+                  )}
+              </div>
+          </div>
+      );
+
+      const StartScreen = ({ startGame, playerName, setPlayerName, birdColor, setBirdColor, setShowLeaderboard }) => (
+          <div className="w-full h-full flex flex-col justify-center items-center text-center text-white p-4">
+              <h1 className="text-6xl font-bold mb-4" style={{ textShadow: '3px 3px 6px #000000' }}>Flappy Bird</h1>
+              <div className="bg-black/30 p-6 rounded-lg shadow-xl flex flex-col items-center gap-6 mb-4 w-full max-w-sm">
+                  <div>
+                      <label htmlFor="playerName" className="block mb-2 text-lg font-bold">Enter Your Name</label>
+                      <input
+                          id="playerName"
+                          type="text"
+                          value={playerName}
+                          placeholder="Player"
+                          onChange={(e) => setPlayerName(e.target.value)}
+                          className="px-4 py-2 rounded-md bg-gray-800 text-white border-2 border-gray-600 focus:border-yellow-400 focus:outline-none text-center placeholder-gray-400"
+                          maxLength={12}
+                          onClick={(e) => e.stopPropagation()}
+                      />
+                  </div>
+                  <div className="w-full">
+                      <label className="block mb-4 text-lg font-bold">Choose Your Bird</label>
+                      <div className="flex justify-center mb-4">
+                          <div
+                              className={`relative ${birdColor} rounded-full border-2 border-black animate-bounce`}
+                              style={{
+                                  width: BIRD_SIZE * 1.5,
+                                  height: BIRD_SIZE * 1.5,
+                              }}
+                          >
+                               <style>{`
+                                  @keyframes bounce {
+                                      0%, 100% {
+                                          transform: translateY(-15%);
+                                          animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+                                      }
+                                      50% {
+                                          transform: translateY(0);
+                                          animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+                                      }
+                                  }
+                                  .animate-bounce {
+                                      animation: bounce 1s infinite;
+                                  }
+                              `}</style>
+                          </div>
+                      </div>
+                      <div className="flex gap-3 justify-center">
+                          {BIRD_COLORS.map(color => (
+                              <div
+                                  key={color}
+                                  onClick={(e) => { e.stopPropagation(); setBirdColor(color); }}
+                                  className={`w-10 h-10 rounded-full cursor-pointer border-4 ${birdColor === color ? 'border-white' : 'border-transparent'} transition-transform hover:scale-110 ${color}`}
+                              />
+                          ))}
+                      </div>
+                  </div>
+              </div>
+              <button
+                  onClick={(e) => { e.stopPropagation(); startGame(); }}
+                  className="px-8 py-4 mb-2 bg-yellow-500 text-black font-bold text-2xl rounded-lg hover:bg-yellow-400 transition-colors w-64"
+              >
+                  Play
+              </button>
+              <button
+                  onClick={(e) => { e.stopPropagation(); setShowLeaderboard(true); }}
+                  className="px-8 py-2 bg-gray-600 text-white font-bold text-lg rounded-lg hover:bg-gray-500 transition-colors w-64"
+              >
+                  History Book
+              </button>
+          </div>
+      );
+
+      const GameOverScreen = ({ restartGame, score, highScore, leaderboard }) => (
+          <div className="absolute inset-0 bg-black/50 flex flex-col justify-center items-center text-center text-white p-4 z-20">
+              <div className="bg-gray-700/90 p-8 rounded-lg shadow-xl border-4 border-gray-900 flex flex-col items-center gap-6">
+                  <h2 className="text-5xl font-bold text-red-500">Game Over</h2>
+                  <div className="text-2xl">
+                      <p>Score: <span className="font-bold text-yellow-400">{score}</span></p>
+                      <p>Personal Best: <span className="font-bold text-yellow-400">{highScore}</span></p>
+                  </div>
+                  <LeaderboardDisplay leaderboard={leaderboard} />
+                  <button
+                      onClick={(e) => { e.stopPropagation(); restartGame(); }}
+                      className="px-6 py-3 bg-yellow-500 text-black font-bold text-xl rounded-lg hover:bg-yellow-400 transition-colors"
+                  >
+                      Play Again
+                  </button>
+              </div>
+          </div>
+      );
+
+      const App = () => {
+          const [gameState, setGameState] = useState('start');
+          const [score, setScore] = useState(0);
+          const [highScore, setHighScore] = useState(() => parseInt(localStorage.getItem('flappyBirdHighScore') || '0', 10));
+          const [playerName, setPlayerName] = useState('');
+          const [birdColor, setBirdColor] = useState(BIRD_COLORS[0]);
+          const [leaderboard, setLeaderboard] = useState([]);
+          const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+          const gameLoopId = useRef(null);
+          const pipeTimeoutId = useRef(null);
+          
+          const birdPosition = useRef(GAME_HEIGHT / 2 - BIRD_SIZE / 2);
+          const birdVelocity = useRef(0);
+          const pipes = useRef([]);
+          
+          const [, setTick] = useState(0);
+
+          useEffect(() => {
+              const storedLeaderboard = localStorage.getItem('flappyBirdLeaderboard');
+              if (storedLeaderboard) {
+                  setLeaderboard(JSON.parse(storedLeaderboard));
+              }
+          }, []);
+
+          const endGame = useCallback(() => {
+              if (gameLoopId.current) cancelAnimationFrame(gameLoopId.current);
+              if (pipeTimeoutId.current) clearTimeout(pipeTimeoutId.current);
+              
+              setGameState('gameOver');
+              
+              if (score > 0) {
+                  const newEntry = { name: playerName || 'Player', score };
+                  const newLeaderboard = [...leaderboard, newEntry]
+                      .sort((a, b) => b.score - a.score)
+                      .slice(0, LEADERBOARD_MAX_ENTRIES);
+                  
+                  setLeaderboard(newLeaderboard);
+                  localStorage.setItem('flappyBirdLeaderboard', JSON.stringify(newLeaderboard));
+              }
+              
+              if (score > highScore) {
+                  localStorage.setItem('flappyBirdHighScore', String(score));
+                  setHighScore(score);
+              }
+          }, [score, highScore, playerName, leaderboard]);
+
+          const gameLoop = useCallback(() => {
+              birdVelocity.current += GRAVITY;
+              birdPosition.current += birdVelocity.current;
+
+              if (birdPosition.current > GAME_HEIGHT - BIRD_SIZE || birdPosition.current < 0) {
+                  endGame();
+                  return;
+              }
+
+              let newScore = score;
+              pipes.current = pipes.current.map(pipe => {
+                  const newX = pipe.x - PIPE_SPEED;
+                  if (!pipe.scored && newX + PIPE_WIDTH < BIRD_X_POSITION) {
+                      newScore++;
+                      return { ...pipe, x: newX, scored: true };
+                  }
+                  return { ...pipe, x: newX };
+              }).filter(pipe => pipe.x > -PIPE_WIDTH);
+              
+              if (newScore > score) {
+                  setScore(newScore);
+              }
+
+              for (const pipe of pipes.current) {
+                  const birdIsBetweenPipe = BIRD_X_POSITION + BIRD_SIZE > pipe.x && BIRD_X_POSITION < pipe.x + PIPE_WIDTH;
+                  const birdHitPipe = birdPosition.current < pipe.topPipeHeight || birdPosition.current + BIRD_SIZE > pipe.topPipeHeight + PIPE_GAP;
+                  if (birdIsBetweenPipe && birdHitPipe) {
+                      endGame();
+                      return;
+                  }
+              }
+              
+              setTick(t => t + 1);
+              gameLoopId.current = requestAnimationFrame(gameLoop);
+          }, [score, endGame]);
+          
+          const spawnPipe = useCallback(() => {
+              const topPipeHeight = Math.random() * (GAME_HEIGHT - PIPE_GAP - 200) + 100;
+              pipes.current.push({ x: GAME_WIDTH, topPipeHeight, scored: false });
+              pipeTimeoutId.current = window.setTimeout(spawnPipe, PIPE_SPAWN_INTERVAL);
+          }, []);
+
+          const startGame = useCallback(() => {
+              setScore(0);
+              birdPosition.current = GAME_HEIGHT / 2 - BIRD_SIZE / 2;
+              birdVelocity.current = 0;
+              pipes.current = [];
+              setShowLeaderboard(false);
+              setGameState('playing');
+          }, []);
+          
+          const restartGame = useCallback(() => {
+              setGameState('start');
+          }, []);
+
+          useEffect(() => {
+              if (gameState === 'playing') {
+                  gameLoopId.current = requestAnimationFrame(gameLoop);
+                  pipeTimeoutId.current = window.setTimeout(spawnPipe, PIPE_SPAWN_INTERVAL);
+              }
+              return () => {
+                  if (gameLoopId.current) cancelAnimationFrame(gameLoopId.current);
+                  if (pipeTimeoutId.current) clearTimeout(pipeTimeoutId.current);
+              };
+          }, [gameState, gameLoop, spawnPipe]);
+          
+          useEffect(() => {
+              const handleAction = () => {
+                  if (gameState === 'playing') {
+                      birdVelocity.current = JUMP_STRENGTH;
+                  }
+              };
+
+              const handleKey = (e) => {
+                  if (e.code === 'Space' || e.key === ' ') {
+                      e.preventDefault();
+                      handleAction();
+                  }
+              };
+
+              window.addEventListener('mousedown', handleAction);
+              window.addEventListener('touchstart', handleAction);
+              window.addEventListener('keydown', handleKey);
+
+              return () => {
+                  window.removeEventListener('mousedown', handleAction);
+                  window.removeEventListener('touchstart', handleAction);
+                  window.removeEventListener('keydown', handleKey);
+              };
+          }, [gameState, startGame, showLeaderboard]);
+
+          return (
+              <div className="flex justify-center items-center min-h-screen bg-gray-800 font-mono select-none">
+                  <div 
+                      className="relative bg-cyan-400 overflow-hidden border-4 border-gray-900 rounded-lg shadow-2xl bg-cover"
+                      style={{ width: GAME_WIDTH, height: GAME_HEIGHT, backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}
+                  >
+                      {(gameState === 'playing' || gameState === 'gameOver') && (
+                          <>
+                              <div 
+                                className={`absolute ${birdColor} rounded-full border-2 border-black transition-transform duration-100`}
+                                style={{
+                                  width: BIRD_SIZE,
+                                  height: BIRD_SIZE,
+                                  top: birdPosition.current,
+                                  left: BIRD_X_POSITION,
+                                  transform: `rotate(${Math.min(90, Math.max(-30, birdVelocity.current * 4))}deg)`,
+                                }}
+                              />
+                              
+                              {pipes.current.map((pipe, index) => (
+                                  <div key={index}>
+                                      <div 
+                                        className="absolute bg-green-600 border-2 border-black"
+                                        style={{ left: pipe.x, top: 0, width: PIPE_WIDTH, height: pipe.topPipeHeight }}
+                                      />
+                                      <div 
+                                        className="absolute bg-green-600 border-2 border-black"
+                                        style={{ left: pipe.x, top: pipe.topPipeHeight + PIPE_GAP, width: PIPE_WIDTH, height: GAME_HEIGHT - pipe.topPipeHeight - PIPE_GAP }}
+                                      />
+                                  </div>
+                              ))}
+                          </>
+                      )}
+
+                      <div className="absolute top-4 left-1/2 -translate-x-1/2 text-5xl font-bold text-white z-10" style={{ textShadow: '2px 2px 4px #000000' }}>
+                        {gameState === 'playing' && score}
+                      </div>
+                      
+                      {gameState === 'start' && !showLeaderboard && (
+                          <StartScreen 
+                              startGame={startGame}
+                              playerName={playerName}
+                              setPlayerName={setPlayerName}
+                              birdColor={birdColor}
+                              setBirdColor={setBirdColor}
+                              setShowLeaderboard={setShowLeaderboard}
+                          />
+                      )}
+                      
+                      {gameState === 'start' && showLeaderboard && (
+                           <div className="w-full h-full flex flex-col justify-center items-center text-center text-white p-4 bg-black/50">
+                              <LeaderboardDisplay leaderboard={leaderboard} />
+                              <button
+                                  onClick={(e) => { e.stopPropagation(); setShowLeaderboard(false); }}
+                                  className="mt-6 px-8 py-2 bg-gray-600 text-white font-bold text-lg rounded-lg hover:bg-gray-500 transition-colors"
+                              >
+                                  Back
+                              </button>
+                          </div>
+                      )}
+                      
+                      {gameState === 'gameOver' && (
+                          <GameOverScreen 
+                              restartGame={restartGame}
+                              score={score}
+                              highScore={highScore}
+                              leaderboard={leaderboard}
+                          />
+                      )}
+                  </div>
+              </div>
+          );
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
